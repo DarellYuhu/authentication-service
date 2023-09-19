@@ -76,15 +76,30 @@ router.post("/signin", async (req, res) => {
       const isValid = await bcrypt.compare(password, user.password);
 
       if (isValid) {
-        const token = await new jose.SignJWT({
+        const payload = {
           username: user.username,
           email: user.email,
-        })
+        };
+
+        const accessToken = await new jose.SignJWT(payload)
           .setProtectedHeader({ alg: "HS256" })
-          .setExpirationTime("1h")
+          .setExpirationTime("20s")
           .sign(secret);
 
-        return res.status(200).json({ message: "User logged in", token });
+        const refreshToken = await new jose.SignJWT(payload)
+          .setProtectedHeader({ alg: "HS256" })
+          .sign(secret);
+
+        await prisma.refreshToken.create({
+          data: {
+            token: refreshToken,
+            userId: user.id,
+          },
+        });
+
+        return res
+          .status(200)
+          .json({ message: "User logged in", accessToken, refreshToken });
       } else {
         return res.status(401).json({
           message: "Invalid Username or Password",
@@ -93,6 +108,7 @@ router.post("/signin", async (req, res) => {
       }
     })
     .catch((error) => {
+      console.log(error);
       return res
         .status(500)
         .json({ message: error, error: "Internal Server Error" });
@@ -100,6 +116,78 @@ router.post("/signin", async (req, res) => {
     .finally(async () => {
       await prisma.$disconnect();
     });
+});
+
+router.delete("/signout", async (req, res) => {
+  const refreshToken = req.body.token;
+
+  if (!refreshToken) {
+    return res.status(401).json({
+      message: "Unathorized",
+      error: "Unauthorized",
+    });
+  }
+
+  try {
+    await prisma.refreshToken.delete({
+      where: {
+        token: refreshToken,
+      },
+    });
+
+    return res.sendStatus(204);
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        message: "Token not found",
+        error: "Not Found",
+      });
+    }
+    return res.status(500).json({
+      message: error,
+      error: "Internal Server Error",
+    });
+  }
+});
+
+router.post("/refresh-token", async (req, res) => {
+  const refreshToken = req.body.token;
+
+  if (!refreshToken) {
+    return res.status(401).json({
+      message: "Unathorized",
+      error: "Unauthorized",
+    });
+  }
+
+  try {
+    const isValid = await prisma.refreshToken.findFirst({
+      where: {
+        token: refreshToken,
+      },
+    });
+
+    if (!isValid) {
+      return res.status(401).json({
+        message: "Unathorized",
+        error: "Unauthorized",
+      });
+    }
+
+    const { payload } = await jose.jwtVerify(refreshToken, secret);
+
+    const accessToken = await new jose.SignJWT(payload)
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("20s")
+      .sign(secret);
+
+    return res.status(200).json({ message: "Success", accessToken });
+  } catch (error) {
+    return res.status(500).json({
+      message: error,
+      error: "Internal Server Error",
+    });
+  }
 });
 
 router.get("/me", verifyToken, async (req, res) => {

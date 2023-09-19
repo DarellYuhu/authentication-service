@@ -14,11 +14,10 @@ async function verifyToken(req, res, next) {
 
     req.user = payload;
     next();
-    // return res.status(200).json({ message: "Success", payload });
   } catch (error) {
     if (error.code === "ERR_JWT_EXPIRED") {
       return res
-        .status(401)
+        .status(403)
         .json({ message: "Token Expired", error: "Unauthorized" });
     }
     return res

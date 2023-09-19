@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
-    "db:migrate": "npx prisma migrate dev --name init",
-    "db:reset": "npx prisma migrate reset"
+    "migrate": "npx prisma migrate dev --name init",
+    "reset": "npx prisma migrate reset"
   },
   "keywords": [],
   "author": "",
